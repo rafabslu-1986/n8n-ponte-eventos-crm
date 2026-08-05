@@ -201,7 +201,7 @@
       "parameters": {
         "resume": "timeInterval",
         "amount": "={{ [1, 5, 15][$json.tentativas - 1] || 15 }}",
-        "unit": "seconds"
+        "unit": "minutes"
       },
       "notes": "Backoff 1 / 5 / 15 minutos. Ajuste ao SLA do CRM de destino."
     },
