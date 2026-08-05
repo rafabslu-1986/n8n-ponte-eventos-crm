@@ -1,0 +1,115 @@
+{
+  "name": "Injetor de Testes (ponte)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "bb000000-0000-4000-8000-000000000001",
+      "name": "Rodar testes",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Cenarios de teste da ponte. Cada item vira um POST no webhook de producao.\n// O texto da mensagem controla o comportamento do stub de CRM.\nconst agora = new Date().toISOString();\nconst marca = Date.now();\n\nconst valido = {\n  canal: 'instagram',\n  id_evento: 'IG-TESTE-' + marca,\n  remetente: '@cliente_teste',\n  texto: 'Ola, quero um orcamento para Porto em julho',\n  timestamp: agora,\n};\n\nreturn [\n  { json: { cenario: '01 - evento valido', esperado: 'entregue', payload: valido } },\n  { json: { cenario: '02 - evento duplicado', esperado: 'duplicado', payload: valido } },\n  { json: { cenario: '03 - campos obrigatorios ausentes', esperado: 'invalido', payload: { canal: 'instagram', id_evento: 'IG-TESTE-' + marca + '-3', remetente: '', texto: '' } } },\n  { json: { cenario: '04 - falha transitoria com retry', esperado: 'entregue depois do retry', payload: { canal: 'whatsapp', id_evento: 'WA-TESTE-' + marca + '-4', remetente: '+55 11 90000-0004', texto: 'FALHA_TRANSITORIA orcamento para Maragogi', timestamp: agora } } },\n  { json: { cenario: '05 - falha permanente 4xx', esperado: 'invalido, sem retry', payload: { canal: 'whatsapp', id_evento: 'WA-TESTE-' + marca + '-5', remetente: '+55 11 90000-0005', texto: 'FALHA_PERMANENTE payload rejeitado pelo CRM', timestamp: agora } } },\n];"
+      },
+      "id": "bb000000-0000-4000-8000-000000000002",
+      "name": "Cenarios de teste",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ponte-eventos",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "bb000000-0000-4000-8000-000000000003",
+      "name": "POST na ponte",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Junta o que foi enviado com o que a ponte respondeu.\nconst enviados = $('Cenarios de teste').all();\nconst linhas = $input.all().map((item, i) => ({\n  cenario: enviados[i] ? enviados[i].json.cenario : 'desconhecido',\n  esperado: enviados[i] ? enviados[i].json.esperado : null,\n  http_da_ponte: item.json.statusCode,\n  resposta_da_ponte: item.json.body,\n}));\n\nreturn [{ json: { total: linhas.length, executado_em: new Date().toISOString(), resultados: linhas } }];"
+      },
+      "id": "bb000000-0000-4000-8000-000000000004",
+      "name": "Resumo dos cenarios",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Rodar testes": {
+      "main": [
+        [
+          {
+            "node": "Cenarios de teste",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cenarios de teste": {
+      "main": [
+        [
+          {
+            "node": "POST na ponte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST na ponte": {
+      "main": [
+        [
+          {
+            "node": "Resumo dos cenarios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
