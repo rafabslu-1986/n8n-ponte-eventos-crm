@@ -1,0 +1,10 @@
+{
+  "_observacao": "Tipos errados em todos os campos. Esperado: a normalizacao converte, detecta campos vazios e devolve status invalido sem chamar o CRM. Para testar corpo nao-JSON, envie texto puro com Content-Type application/json.",
+  "canal": 12345,
+  "id_evento": null,
+  "remetente": {
+    "numero": "+55 11 90000-0005"
+  },
+  "texto": null,
+  "timestamp": "ontem"
+}
