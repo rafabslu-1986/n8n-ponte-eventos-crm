@@ -384,13 +384,13 @@
       "parameters": {
         "content": "## 3. Persist every attempt\nOne upserted row per event: status, reason, HTTP code, attempts and reprocessing flag.",
         "height": 280,
-        "width": 540,
+        "width": 480,
         "color": 7
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        700,
+        760,
         200
       ],
       "id": "sticky-s3",
