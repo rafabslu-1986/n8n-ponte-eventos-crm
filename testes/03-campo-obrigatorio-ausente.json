@@ -1,0 +1,7 @@
+{
+  "_observacao": "Falta o campo obrigatorio texto. Esperado: status invalido, alerta disparado e nenhuma chamada ao CRM.",
+  "canal": "instagram",
+  "id_evento": "ig_evt_000000903",
+  "remetente": "perfil_teste_qa",
+  "timestamp": "2026-08-05T13:47:02.000Z"
+}
