@@ -58,7 +58,7 @@ A chave tem restrição de unicidade na tabela de eventos. A verificação acont
 - Depois da terceira tentativa: status `falha`, o registro mantém o payload original e o último erro, e o evento entra na fila de reprocessamento manual.
 - O contador de tentativas vem do `$runIndex` do próprio n8n, e não de um campo carregado entre os nós — foi o que corrigiu um bug em que o contador reiniciava a cada volta do laço e o retry nunca esgotava.
 
-> **Backoff no arquivo publicado:** o JSON deste repositório está com o nó de espera em **segundos** (1, 5, 15), porque foi assim que os testes locais rodaram — cerca de 8 segundos em vez de 21 minutos. Em produção troque a unidade do nó `Backoff progressivo` para **minutos**. A lógica é a mesma; só a unidade muda.
+> **Backoff:** o JSON deste repositório e a versão publicada no n8n usam **minutos** (1, 5, 15) — o valor de produção. Os testes documentados em `docs/resultado-dos-testes.md` foram executados com a mesma escala em **segundos**, apenas para validar o ciclo completo em ~8 segundos em vez de 21 minutos. A lógica é idêntica: muda só a unidade do nó `Backoff progressivo`.
 
 ## Alertas
 
@@ -73,6 +73,7 @@ docs/
   esquema-tabela-eventos.md      campos, tipos e indices da tabela de eventos
   runbook-reprocessamento.md     como reprocessar a fila de falhas
   resultado-dos-testes.md        o que foi executado e o que cada cenario devolveu
+  imagens/                       prints do fluxo e da tabela de eventos
 testes/
   crm-stub.json                  CRM falso em n8n: responde 201, 422 ou 503 sob comando
   injetor-testes.json            dispara os 6 cenarios contra o webhook da ponte
@@ -112,6 +113,27 @@ O detalhamento e as evidências estão em `docs/resultado-dos-testes.md`.
 | CRM fora do ar (503 sempre) | `falha` + fila + alerta | `falha`, 3/3 tentativas, `na_fila_reprocessamento = true` |
 
 Nenhum evento terminou sem status final, e cada desfecho gerou exatamente uma linha na Data Table.
+
+## Evidências
+
+Prints da execução real no n8n. A Data Table tem 11 linhas: 5 da primeira rodada (que revelou o bug do contador de tentativas) e 6 da rodada final, já corrigida — uma linha por desfecho, sem sobrescrita.
+
+![Fluxo completo no canvas do n8n](docs/imagens/01-fluxo-canvas.png)
+
+*Os 12 nós da ponte: entrada, normalização e idempotência, roteamento por status, entrega no CRM, classificação da resposta, retry com backoff, estado final, alerta e gravação na Data Table.*
+
+![Tabela de eventos: identificação](docs/imagens/02-tabela-identificacao.png)
+
+*Chave de idempotência, canal, remetente, texto e id externo de cada evento.*
+
+![Tabela de eventos: status e motivos](docs/imagens/03-tabela-status-e-motivos.png)
+
+*Todo evento termina com status final e motivo legível — `entregue`, `duplicado`, `invalido` ou `falha`. A linha 10 registra "entregue na tentativa 3"; a linha 11, "tentativas de entrega esgotadas (3/3)".*
+
+![Tabela de eventos: tentativas e fila](docs/imagens/04-tabela-tentativas-e-fila.png)
+
+*Contador de tentativas, código HTTP devolvido pelo CRM e a flag `na_fila_reprocessamento`, marcada só na falha definitiva.*
+
 
 ## Limitações e escopo
 
