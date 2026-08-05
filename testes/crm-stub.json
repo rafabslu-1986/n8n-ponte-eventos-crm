@@ -1,0 +1,81 @@
+{
+  "name": "CRM Stub (teste local)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-stub",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "aa000000-0000-4000-8000-000000000001",
+      "name": "CRM Stub In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        0
+      ],
+      "webhookId": "aa000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Stub de CRM para os testes locais da ponte.\n// Decide o codigo HTTP a partir do texto da mensagem recebida:\n//   FALHA_PERMANENTE  -> 422 (o classificador trata como invalido, sem retry)\n//   FALHA_TRANSITORIA -> 503 nas duas primeiras tentativas e 201 na terceira\n//   qualquer outro     -> 201 (criado)\nconst memoria = $getWorkflowStaticData('global');\nif (!memoria.tentativas) memoria.tentativas = {};\n\nconst entrada = $input.first().json;\nconst corpoRecebido = entrada.body || entrada;\nconst chave = String(corpoRecebido.chave_idempotencia || 'sem-chave');\nconst mensagem = String(corpoRecebido.mensagem || '');\n\nlet codigo = 201;\nlet corpo = {\n  id_crm: 'CRM-' + chave.slice(0, 8),\n  status: 'created',\n  chave_idempotencia: chave,\n};\n\nif (mensagem.includes('FALHA_PERMANENTE')) {\n  codigo = 422;\n  corpo = { erro: 'payload rejeitado pelo CRM (stub)', campo: 'mensagem' };\n} else if (mensagem.includes('FALHA_TRANSITORIA')) {\n  const n = (memoria.tentativas[chave] || 0) + 1;\n  memoria.tentativas[chave] = n;\n  if (n <= 2) {\n    codigo = 503;\n    corpo = { erro: 'CRM indisponivel (stub)', tentativa_recebida: n };\n  } else {\n    corpo.recuperado_na_tentativa = n;\n  }\n}\n\nreturn [{ json: { codigo, corpo } }];"
+      },
+      "id": "aa000000-0000-4000-8000-000000000002",
+      "name": "Decide resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.corpo) }}",
+        "options": {
+          "responseCode": "={{ $json.codigo }}"
+        }
+      },
+      "id": "aa000000-0000-4000-8000-000000000003",
+      "name": "Responde como o CRM",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "CRM Stub In": {
+      "main": [
+        [
+          {
+            "node": "Decide resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide resposta": {
+      "main": [
+        [
+          {
+            "node": "Responde como o CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
