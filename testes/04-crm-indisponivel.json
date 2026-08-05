@@ -1,0 +1,8 @@
+{
+  "_observacao": "Payload valido. Para reproduzir o cenario, aponte a URL do no Entrega no CRM para um endpoint que devolva 503 antes de enviar. Esperado: 3 tentativas com backoff 1/5/15 min, depois status falha, fila de reprocessamento e alerta.",
+  "canal": "whatsapp",
+  "id_evento": "wamid.HBgNNTU2Njk2NDExMTExFQIAEhgg04",
+  "remetente": "+55 11 90000-0004",
+  "texto": "Quero saber o valor do pacote para Buenos Aires em setembro.",
+  "timestamp": "2026-08-05T13:52:44.000Z"
+}
