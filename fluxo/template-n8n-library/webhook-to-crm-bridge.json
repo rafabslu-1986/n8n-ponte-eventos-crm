@@ -336,8 +336,8 @@
     {
       "parameters": {
         "content": "## Reliable event bridge: Instagram / WhatsApp to CRM\n\nWebhook providers deliver **at least once** and CRMs go down. This template makes the hand-off safe: no duplicates, no silent losses.\n\n### How it works\n1. **Receive event webhook** accepts any JSON event (Instagram DM, WhatsApp message or your own producer).\n2. **Normalize payload and build idempotency key** flattens the payload and derives a deterministic SHA-256 key, so the same event is never processed twice.\n3. **Send event to CRM** posts to your endpoint with a 15s timeout and never throws.\n4. **Classify CRM response** splits the outcome into delivered, retryable (429, 5xx, timeout) or permanent failure (4xx).\n5. **Wait with progressive backoff** retries after 1, 5 and 15 minutes.\n6. **Upsert event into Data Table** records status, reason, HTTP code, attempt count and a reprocessing flag for every attempt.\n7. Permanent failures reach the alert branch.\n\n### Setup\n1. Create a Data Table with the columns listed in the grey note below.\n2. Open **Config** and set `crm_webhook_url` to your CRM endpoint.\n3. Select your Data Table in **Upsert event into Data Table**.\n4. Point your provider at the production URL of **Receive event webhook**.\n\n### Customization tips\nChange the backoff array in **Wait with progressive backoff** and replace **Alert channel** with Slack, e-mail or PagerDuty.",
-        "height": 560,
-        "width": 660
+        "height": 820,
+        "width": 700
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
