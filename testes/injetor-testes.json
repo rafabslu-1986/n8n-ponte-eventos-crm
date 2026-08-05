@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {},
-      "id": "bb000000-0000-4000-8000-000000000001",
+      "id": "d1a1b2c3-1111-4111-8111-111111111111",
       "name": "Rodar testes",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -15,9 +15,9 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Cenarios de teste da ponte. Cada item vira um POST no webhook de producao.\n// O texto da mensagem controla o comportamento do stub de CRM.\nconst agora = new Date().toISOString();\nconst marca = Date.now();\n\nconst valido = {\n  canal: 'instagram',\n  id_evento: 'IG-TESTE-' + marca,\n  remetente: '@cliente_teste',\n  texto: 'Ola, quero um orcamento para Porto em julho',\n  timestamp: agora,\n};\n\nreturn [\n  { json: { cenario: '01 - evento valido', esperado: 'entregue', payload: valido } },\n  { json: { cenario: '02 - evento duplicado', esperado: 'duplicado', payload: valido } },\n  { json: { cenario: '03 - campos obrigatorios ausentes', esperado: 'invalido', payload: { canal: 'instagram', id_evento: 'IG-TESTE-' + marca + '-3', remetente: '', texto: '' } } },\n  { json: { cenario: '04 - falha transitoria com retry', esperado: 'entregue depois do retry', payload: { canal: 'whatsapp', id_evento: 'WA-TESTE-' + marca + '-4', remetente: '+55 11 90000-0004', texto: 'FALHA_TRANSITORIA orcamento para Maragogi', timestamp: agora } } },\n  { json: { cenario: '05 - falha permanente 4xx', esperado: 'invalido, sem retry', payload: { canal: 'whatsapp', id_evento: 'WA-TESTE-' + marca + '-5', remetente: '+55 11 90000-0005', texto: 'FALHA_PERMANENTE payload rejeitado pelo CRM', timestamp: agora } } },\n];"
+        "jsCode": "// Cenarios de teste da ponte. Cada item vira um POST no webhook de producao.\n// O texto da mensagem controla o comportamento do stub de CRM.\nconst agora = new Date().toISOString();\nconst marca = Date.now();\n\nconst valido = {\n  canal: 'instagram',\n  id_evento: 'IG-TESTE-' + marca,\n  remetente: '@cliente_teste',\n  texto: 'Ola, quero um orcamento para Porto em julho',\n  timestamp: agora,\n};\n\nreturn [\n  { json: { cenario: '01 - evento valido', esperado: 'entregue', payload: valido } },\n  { json: { cenario: '02 - evento duplicado', esperado: 'duplicado', payload: valido } },\n  { json: { cenario: '03 - campos obrigatorios ausentes', esperado: 'invalido', payload: { canal: 'instagram', id_evento: 'IG-TESTE-' + marca + '-3', remetente: '', texto: '' } } },\n  { json: { cenario: '04 - falha transitoria com retry', esperado: 'entregue na 3a tentativa', payload: { canal: 'whatsapp', id_evento: 'WA-TESTE-' + marca + '-4', remetente: '+55 11 90000-0004', texto: 'FALHA_TRANSITORIA orcamento para Maragogi', timestamp: agora } } },\n  { json: { cenario: '05 - falha permanente 4xx', esperado: 'invalido, sem retry', payload: { canal: 'whatsapp', id_evento: 'WA-TESTE-' + marca + '-5', remetente: '+55 11 90000-0005', texto: 'FALHA_PERMANENTE payload rejeitado pelo CRM', timestamp: agora } } },\n  { json: { cenario: '06 - CRM fora do ar (esgota o retry)', esperado: 'falha + fila de reprocessamento + alerta', payload: { canal: 'instagram', id_evento: 'IG-TESTE-' + marca + '-6', remetente: '@cliente_teste_6', texto: 'FALHA_SEMPRE quero um orcamento', timestamp: agora } } },\n];"
       },
-      "id": "bb000000-0000-4000-8000-000000000002",
+      "id": "d2a1b2c3-2222-4222-8222-222222222222",
       "name": "Cenarios de teste",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -49,7 +49,7 @@
           "timeout": 15000
         }
       },
-      "id": "bb000000-0000-4000-8000-000000000003",
+      "id": "d3a1b2c3-3333-4333-8333-333333333333",
       "name": "POST na ponte",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -63,7 +63,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "// Junta o que foi enviado com o que a ponte respondeu.\nconst enviados = $('Cenarios de teste').all();\nconst linhas = $input.all().map((item, i) => ({\n  cenario: enviados[i] ? enviados[i].json.cenario : 'desconhecido',\n  esperado: enviados[i] ? enviados[i].json.esperado : null,\n  http_da_ponte: item.json.statusCode,\n  resposta_da_ponte: item.json.body,\n}));\n\nreturn [{ json: { total: linhas.length, executado_em: new Date().toISOString(), resultados: linhas } }];"
       },
-      "id": "bb000000-0000-4000-8000-000000000004",
+      "id": "d4a1b2c3-4444-4444-8444-444444444444",
       "name": "Resumo dos cenarios",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
