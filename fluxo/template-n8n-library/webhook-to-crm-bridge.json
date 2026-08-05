@@ -1,0 +1,592 @@
+{
+  "name": "Forward Instagram and WhatsApp webhook events to a CRM with idempotency and retry",
+  "nodes": [
+    {
+      "name": "Receive event webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -840,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ponte-eventos",
+        "responseMode": "onReceived",
+        "responseData": "Event received",
+        "options": {}
+      }
+    },
+    {
+      "name": "Normalize payload and build idempotency key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Normalizacao do payload + chave de idempotencia deterministica (SHA-256).\n// Roda uma vez para todos os itens recebidos no webhook.\n//\n// Por que SHA-256 escrito a mao: o sandbox do Code node do n8n bloqueia\n// require('crypto') e nao expoe o Web Crypto global, entao a funcao abaixo e\n// uma implementacao pura em JS (validada contra o SHA-256 de referencia).\nconst K = [\n  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,\n  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,\n  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,\n  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,\n  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,\n  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,\n  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,\n  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,\n];\n\nconst rotr = (x, n) => (x >>> n) | (x << (32 - n));\n\nfunction utf8Bytes(texto) {\n  const out = [];\n  for (const ch of Array.from(String(texto))) {\n    const c = ch.codePointAt(0);\n    if (c < 0x80) out.push(c);\n    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));\n    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));\n    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));\n  }\n  return out;\n}\n\nfunction sha256(texto) {\n  const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];\n  const bytes = utf8Bytes(texto);\n  const bits = bytes.length * 8;\n  bytes.push(0x80);\n  while (bytes.length % 64 !== 56) bytes.push(0);\n  const hi = Math.floor(bits / 4294967296);\n  const lo = bits >>> 0;\n  bytes.push((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255);\n  bytes.push((lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255);\n\n  const w = new Array(64);\n  for (let i = 0; i < bytes.length; i += 64) {\n    for (let t = 0; t < 16; t++) {\n      w[t] = (bytes[i + t * 4] << 24) | (bytes[i + t * 4 + 1] << 16) | (bytes[i + t * 4 + 2] << 8) | bytes[i + t * 4 + 3];\n    }\n    for (let t = 16; t < 64; t++) {\n      const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);\n      const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);\n      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;\n    }\n    let a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];\n    for (let t = 0; t < 64; t++) {\n      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);\n      const ch = (e & f) ^ (~e & g);\n      const t1 = (hh + S1 + ch + K[t] + w[t]) | 0;\n      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);\n      const maj = (a & b) ^ (a & c) ^ (b & c);\n      const t2 = (S0 + maj) | 0;\n      hh = g; g = f; f = e; e = (d + t1) | 0;\n      d = c; c = b; b = a; a = (t1 + t2) | 0;\n    }\n    h[0] = (h[0] + a) | 0; h[1] = (h[1] + b) | 0; h[2] = (h[2] + c) | 0; h[3] = (h[3] + d) | 0;\n    h[4] = (h[4] + e) | 0; h[5] = (h[5] + f) | 0; h[6] = (h[6] + g) | 0; h[7] = (h[7] + hh) | 0;\n  }\n  return h.map((x) => (x >>> 0).toString(16).padStart(8, '0')).join('');\n}\n\n// Cache de chaves ja processadas (persiste entre execucoes do workflow).\nconst store = $getWorkflowStaticData('global');\nif (!Array.isArray(store.chaves)) store.chaves = [];\nconst LIMITE_CACHE = 5000;\n\nconst saida = [];\n\nfor (const item of $input.all()) {\n  const b = item.json.body || item.json;\n\n  const canal = String(b.canal || '').trim().toLowerCase();\n  const remetente = String(b.remetente || '').trim();\n  const texto = String(b.texto || '').trim();\n  const idExterno = b.id_evento ? String(b.id_evento) : null;\n  const recebidoEm = new Date().toISOString();\n  const tsOrigem = b.timestamp ? String(b.timestamp) : recebidoEm;\n\n  // Validacao dos campos obrigatorios\n  const faltando = [];\n  if (!canal) faltando.push('canal');\n  if (!remetente) faltando.push('remetente');\n  if (!texto) faltando.push('texto');\n\n  // Chave de idempotencia: id do evento quando existe, senao chave derivada estavel\n  const chave = idExterno\n    ? sha256(canal + ':' + idExterno)\n    : sha256(canal + ':' + remetente + ':' + tsOrigem.slice(0, 16) + ':' + sha256(texto));\n\n  let status = 'novo';\n  let motivo = null;\n\n  if (faltando.length) {\n    status = 'invalido';\n    motivo = 'campos obrigatorios ausentes: ' + faltando.join(', ');\n  } else if (store.chaves.includes(chave)) {\n    status = 'duplicado';\n    motivo = 'chave de idempotencia ja processada';\n  } else {\n    store.chaves.push(chave);\n    if (store.chaves.length > LIMITE_CACHE) {\n      store.chaves = store.chaves.slice(-LIMITE_CACHE);\n    }\n  }\n\n  saida.push({\n    json: {\n      chave,\n      canal,\n      remetente,\n      texto,\n      id_externo: idExterno,\n      timestamp_origem: tsOrigem,\n      recebido_em: recebidoEm,\n      status,\n      motivo,\n      tentativas: 0,\n      http_status: null,\n      ultimo_erro: null,\n      na_fila_reprocessamento: false,\n      payload_original: b,\n    },\n  });\n}\n\nreturn saida;"
+      }
+    },
+    {
+      "name": "Route by delivery status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-novo",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "novo",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "novo"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-duplicado",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "duplicado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "duplicado"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-invalido",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "invalido",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "invalido"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Send event to CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        100,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.crm_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ idempotency_key: $json.chave, channel: $json.canal, sender: $json.remetente, message: $json.texto, occurred_at: $json.timestamp_origem }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "notes": "Troque a URL e a credencial pelo CRM do cliente. neverError + fullResponse: a classificacao do resultado e feita no proximo no."
+    },
+    {
+      "name": "Classify CRM response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        160
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Classifica a resposta do CRM sem lancar excecao.\n// 2xx   -> entregue\n// 4xx   -> invalido (falha permanente, nao faz retry)\n// resto -> retentar (falha transitoria)\n//\n// O numero da tentativa vem de $runIndex: cada volta no laco de retry executa\n// este node de novo, entao runIndex 0 e a 1a tentativa. Usar o contador do\n// proprio n8n evita o bug de reiniciar o contador a cada volta.\nconst tentativa = $runIndex + 1;\nconst saida = [];\n\nfor (const item of $input.all()) {\n  const base = $('Normalize payload and build idempotency key').first().json;\n  const code = Number(item.json.statusCode || 0);\n  const corpo = item.json.body;\n\n  const evento = { ...base };\n  evento.http_status = code;\n  evento.tentativas = tentativa;\n\n  const detalhe = typeof corpo === 'string'\n    ? corpo.slice(0, 500)\n    : JSON.stringify(corpo || {}).slice(0, 500);\n\n  if (code >= 200 && code < 300) {\n    evento.status = 'entregue';\n    evento.motivo = tentativa > 1 ? 'entregue na tentativa ' + tentativa : null;\n    evento.ultimo_erro = null;\n  } else if (code >= 400 && code < 500) {\n    evento.status = 'invalido';\n    evento.motivo = 'CRM rejeitou o evento (' + code + '): falha permanente, sem retry';\n    evento.ultimo_erro = detalhe;\n  } else {\n    evento.status = 'retentar';\n    evento.motivo = 'falha transitoria no CRM (' + (code || 'sem resposta') + ') na tentativa ' + tentativa;\n    evento.ultimo_erro = detalhe;\n  }\n\n  saida.push({ json: evento });\n}\n\nreturn saida;"
+      }
+    },
+    {
+      "name": "Should retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        540,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "retry",
+              "leftValue": "={{ $json.status === 'retentar' && $json.tentativas < 3 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Wait with progressive backoff",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        540,
+        -20
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ [1, 5, 15][$json.tentativas - 1] || 15 }}",
+        "unit": "minutes"
+      },
+      "notes": "Backoff 1 / 5 / 15 minutos. Ajuste ao SLA do CRM de destino."
+    },
+    {
+      "name": "Build final state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Fecha o ciclo de vida do evento com um status final explicito.\n// Nenhum evento sai daqui sem desfecho.\nconst FINAIS = ['entregue', 'duplicado', 'invalido', 'falha'];\n\nreturn $input.all().map((item) => {\n  const e = { ...item.json };\n\n  if (e.status === 'retentar') {\n    e.status = 'falha';\n    e.na_fila_reprocessamento = true;\n    e.motivo = 'tentativas de entrega esgotadas (' + e.tentativas + '/3): ' + (e.motivo || '');\n  }\n\n  if (!FINAIS.includes(e.status)) {\n    e.status = 'falha';\n    e.na_fila_reprocessamento = true;\n    e.motivo = 'status inesperado ao final do fluxo';\n  }\n\n  e.finalizado_em = new Date().toISOString();\n\n  // Chave do registro no ledger: uma linha por (chave de idempotencia, desfecho).\n  // Assim um evento duplicado nunca sobrescreve o registro da entrega original.\n  e.chave_registro = e.chave + ':' + e.status;\n\n  // A Data Table guarda o payload bruto como texto.\n  e.payload_original = typeof e.payload_original === 'string'\n    ? e.payload_original\n    : JSON.stringify(e.payload_original || {});\n\n  // Normaliza os tipos para as colunas da Data Table (sem null).\n  e.tentativas = Number(e.tentativas || 0);\n  e.http_status = e.http_status == null ? 0 : Number(e.http_status);\n  e.na_fila_reprocessamento = Boolean(e.na_fila_reprocessamento);\n  e.motivo = e.motivo == null ? '' : String(e.motivo);\n  e.ultimo_erro = e.ultimo_erro == null ? '' : String(e.ultimo_erro);\n  e.id_externo = e.id_externo == null ? '' : String(e.id_externo);\n\n  return { json: e };\n});"
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "sLgMdX8rzSJ3iyOK",
+          "mode": "list",
+          "cachedResultName": "Eventos da Ponte"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "chave_registro",
+              "condition": "eq",
+              "keyValue": "={{ $json.chave_registro }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "name": "Upsert event into Data Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1000,
+        300
+      ]
+    },
+    {
+      "name": "Needs alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "alerta",
+              "leftValue": "={{ ['invalido', 'falha'].includes($json.status) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Build alert message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Monta a mensagem de alerta: canal, chave, status e ultimo erro.\n// Enxuto de proposito: quem recebe precisa decidir sem abrir o n8n.\nreturn $input.all().map((item) => {\n  const e = item.json;\n  const linhas = [\n    '[PONTE DE EVENTOS] ' + String(e.status).toUpperCase(),\n    'canal: ' + e.canal,\n    'remetente: ' + e.remetente,\n    'chave: ' + e.chave,\n    'tentativas: ' + e.tentativas,\n    'http: ' + (e.http_status === null ? '-' : e.http_status),\n    'motivo: ' + (e.motivo || '-'),\n    'erro: ' + (e.ultimo_erro || '-'),\n    'fila de reprocessamento: ' + (e.na_fila_reprocessamento ? 'sim' : 'nao'),\n  ];\n  return { json: { alerta: linhas.join('\\n'), evento: e } };\n});"
+      }
+    },
+    {
+      "name": "Alert channel",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1720,
+        200
+      ],
+      "notes": "Conecte aqui Slack, e-mail ou WhatsApp. O campo alerta ja vem formatado."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-url",
+              "name": "crm_webhook_url",
+              "value": "https://your-crm.example.com/webhook/events",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -620,
+        300
+      ],
+      "id": "cfg00000-0000-4000-8000-000000000001",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "content": "## Reliable event bridge: Instagram / WhatsApp to CRM\n\nWebhook providers deliver **at least once** and CRMs go down. This template makes the hand-off safe: no duplicates, no silent losses.\n\n### How it works\n1. **Receive event webhook** accepts any JSON event (Instagram DM, WhatsApp message or your own producer).\n2. **Normalize payload and build idempotency key** flattens the payload and derives a deterministic SHA-256 key, so the same event is never processed twice.\n3. **Send event to CRM** posts to your endpoint with a 15s timeout and never throws.\n4. **Classify CRM response** splits the outcome into delivered, retryable (429, 5xx, timeout) or permanent failure (4xx).\n5. **Wait with progressive backoff** retries after 1, 5 and 15 minutes.\n6. **Upsert event into Data Table** records status, reason, HTTP code, attempt count and a reprocessing flag for every attempt.\n7. Permanent failures reach the alert branch.\n\n### Setup\n1. Create a Data Table with the columns listed in the grey note below.\n2. Open **Config** and set `crm_webhook_url` to your CRM endpoint.\n3. Select your Data Table in **Upsert event into Data Table**.\n4. Point your provider at the production URL of **Receive event webhook**.\n\n### Customization tips\nChange the backoff array in **Wait with progressive backoff** and replace **Alert channel** with Slack, e-mail or PagerDuty.",
+        "height": 560,
+        "width": 660
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        -620
+      ],
+      "id": "sticky-main",
+      "name": "Sticky Note sticky-main"
+    },
+    {
+      "parameters": {
+        "content": "## 1. Ingest and deduplicate\nEvery event gets a deterministic idempotency key before anything else happens.",
+        "height": 280,
+        "width": 960,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        200
+      ],
+      "id": "sticky-s1",
+      "name": "Sticky Note sticky-s1"
+    },
+    {
+      "parameters": {
+        "content": "## 2. Deliver, classify and retry\nTransient errors (429, 5xx, timeout) are retried with 1/5/15 minute backoff. A 4xx stops immediately.",
+        "height": 460,
+        "width": 700,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        60,
+        -120
+      ],
+      "id": "sticky-s2",
+      "name": "Sticky Note sticky-s2"
+    },
+    {
+      "parameters": {
+        "content": "## 3. Persist every attempt\nOne upserted row per event: status, reason, HTTP code, attempts and reprocessing flag.",
+        "height": 280,
+        "width": 540,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        700,
+        200
+      ],
+      "id": "sticky-s3",
+      "name": "Sticky Note sticky-s3"
+    },
+    {
+      "parameters": {
+        "content": "## 4. Alert on permanent failure\nReplace the no-op with Slack, e-mail or your on-call tool.",
+        "height": 380,
+        "width": 700,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        100
+      ],
+      "id": "sticky-s4",
+      "name": "Sticky Note sticky-s4"
+    },
+    {
+      "parameters": {
+        "content": "## Data Table columns to create\n`chave` (key) - `canal` (channel) - `remetente` (sender) - `texto` (message) - `id_externo` (provider id) - `timestamp_origem` (origin timestamp) - `status` - `motivo` (reason) - `ultimo_erro` (last error) - `finalizado_em` (finished at) - `payload_original` - `tentativas` (attempts, number) - `http_status` (number) - `na_fila_reprocessamento` (in reprocessing queue, boolean) - `chave_registro` (record key, used for the upsert match).",
+        "height": 360,
+        "width": 960,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        520
+      ],
+      "id": "sticky-cols",
+      "name": "Sticky Note sticky-cols"
+    }
+  ],
+  "connections": {
+    "Receive event webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize payload and build idempotency key": {
+      "main": [
+        [
+          {
+            "node": "Route by delivery status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by delivery status": {
+      "main": [
+        [
+          {
+            "node": "Send event to CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build final state",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build final state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send event to CRM": {
+      "main": [
+        [
+          {
+            "node": "Classify CRM response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify CRM response": {
+      "main": [
+        [
+          {
+            "node": "Should retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should retry?": {
+      "main": [
+        [
+          {
+            "node": "Wait with progressive backoff",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build final state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait with progressive backoff": {
+      "main": [
+        [
+          {
+            "node": "Send event to CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build final state": {
+      "main": [
+        [
+          {
+            "node": "Upsert event into Data Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert event into Data Table": {
+      "main": [
+        [
+          {
+            "node": "Needs alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs alert?": {
+      "main": [
+        [
+          {
+            "node": "Build alert message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Build alert message": {
+      "main": [
+        [
+          {
+            "node": "Alert channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Normalize payload and build idempotency key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
