@@ -59,9 +59,8 @@ que agora o retry termina em `falha` depois de 3 tentativas.
 
 ## Diferenca em relacao a producao
 
-O no `Backoff progressivo` esta em **segundos** (1, 5, 15) no arquivo publicado, para que
-a bateria completa rode em cerca de 8 segundos. Em producao a unidade deve ser
-**minutos**. Nada mais muda.
+Os testes rodaram com o no `Backoff progressivo` em **segundos** (1, 5, 15), para que a bateria completa terminasse em cerca de 8 segundos em vez de 21 minutos.
+O fluxo publicado e o JSON deste repositorio estao em **minutos** (1, 5, 15), que e o valor de producao. Nada mais muda entre as duas configuracoes.
 
 O `dataTableId` gravado no fluxo aponta para a Data Table desta instancia. Ao importar em
 outro n8n, reselecione a sua tabela no no `Registra evento (Data Table)`.
@@ -72,3 +71,15 @@ A Data Table funciona como um livro-razao: **uma linha por (chave de idempotenci
 desfecho)**, usando a coluna `chave_registro`. E por isso que o evento duplicado do
 cenario 02 nao sobrescreve o registro da entrega do cenario 01 — as duas linhas existem,
 com a mesma `chave` e desfechos diferentes.
+
+## Evidencias
+
+Prints da instancia real logo depois da bateria de testes. A tabela tem 11 linhas: 5 da primeira rodada (a que revelou o bug do contador) e 6 da rodada final.
+
+![Fluxo no canvas](imagens/01-fluxo-canvas.png)
+
+![Identificacao dos eventos](imagens/02-tabela-identificacao.png)
+
+![Status e motivos](imagens/03-tabela-status-e-motivos.png)
+
+![Tentativas, http_status e fila](imagens/04-tabela-tentativas-e-fila.png)
