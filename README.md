@@ -150,4 +150,4 @@ Reliable event bridge between Instagram/WhatsApp webhooks and a CRM, built on n8
 
 ## Licença
 
-MIT — ver `LICENSE`.
+Código disponível para consulta somente. Todos os direitos reservados. Ver `LICENSE`.
